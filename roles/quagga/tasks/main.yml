@@ -1,0 +1,68 @@
+- name: create another loopback interface  
+  template:
+    src: "loopback.j2"
+    dest: "/etc/sysconfig/network-scripts/ifcfg-lo.2"
+  register: AnotherLoopback
+
+- name: install tcpdump
+  yum:
+    name: tcpdump
+    state: present
+
+- name: create router.conf
+  template:
+    src: "router.conf.j2"
+    dest: "/etc/sysctl.d/router.conf"
+  register: RouterConf
+
+- name: install quagga
+  yum:
+    name: quagga
+    state: present
+
+- name: install libsemanage-python
+  package:
+    name: libsemanage-python
+    state: present
+
+- name: set SELinux bool for zebra write permission
+  seboolean:
+    name: zebra_write_config
+    state: yes
+    persistent: yes
+
+- name: create zebra and ospfd configuration
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/quagga/{{ item }}"
+    owner: quagga
+    group: quagga
+    mode: '0640'
+  loop: 
+    - ospfd.conf
+    - zebra.conf
+
+- name: start&enable zebra and ospfd service
+  service:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  with_items:
+    - zebra
+    - ospfd
+
+- name: Find and delete default route
+  lineinfile:
+     path: /etc/sysconfig/network-scripts/ifcfg-eth0
+     line: DEFROUTE=no
+     state: present  
+  register: DefRouteDel
+  when: "inventory_hostname != groups['OSPF_masta'][0]"
+
+- name: Restart network
+  service:
+    name: network
+    state: restarted
+  when: AnotherLoopback.changed
+    or RouterConf.changed 
+    or DefRouteDel.changed

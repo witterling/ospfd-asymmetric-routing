@@ -1,0 +1,5 @@
+- name: "Quagga deploy"
+  hosts: all
+  become: yes 
+  roles:
+    - { role: quagga }
